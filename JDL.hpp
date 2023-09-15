@@ -7,24 +7,23 @@
 #include <poputil/TileMapping.hpp>
 
 
-using namespace poplar;
 
 namespace JDL {
 
 
 
   struct Programs {
-    program::Execute setup;
-    program::Sequence exchange;
+    poplar::program::Execute setup;
+    poplar::program::Sequence exchange;
   };
 
 
-  Programs createPrograms(
-      Graph &graph,
-      const Tensor &data,
-      const Tensor &tileSelector,
-      const Tensor &elementSelector,
-      const Tensor &result
+  inline Programs createPrograms(
+      poplar::Graph &graph,
+      const poplar::Tensor &data,
+      const poplar::Tensor &tileSelector,
+      const poplar::Tensor &elementSelector,
+      const poplar::Tensor &result
   ) {
   /*
     Creates programs to perform a JIT Dynamic Lookup (JDL)
@@ -85,20 +84,20 @@ namespace JDL {
     graph.addCodelets("JDL.gp");
     const int planSize = 9;
     unsigned numActiveTiles = numDataTiles + 1; // senders of data, plus 1 receiver
-    Tensor planBuf = graph.addVariable(UNSIGNED_INT, {numActiveTiles, planSize}, "JDL_planBuf");
-    Tensor dummy = graph.addVariable(UNSIGNED_INT, {numActiveTiles, 1}, "JDL_dummy");
-    Tensor receiverIdConst = graph.addConstant<int>(INT, {}, receiverTileId, "JDL_receiverTileIdConst");
-    Tensor countConst = graph.addConstant<unsigned>(UNSIGNED_INT, {}, result.numElements(), "JDL_countConst");
-    ComputeSet setupCS = graph.addComputeSet("JDL_setupCS"); 
-    ComputeSet exchangeCS = graph.addComputeSet("JDL_exchangeCS");
+    poplar::Tensor planBuf = graph.addVariable(poplar::UNSIGNED_INT, {numActiveTiles, planSize}, "JDL_planBuf");
+    poplar::Tensor dummy = graph.addVariable(poplar::UNSIGNED_INT, {numActiveTiles, 1}, "JDL_dummy");
+    poplar::Tensor receiverIdConst = graph.addConstant<int>(poplar::INT, {}, receiverTileId, "JDL_receiverTileIdConst");
+    poplar::Tensor countConst = graph.addConstant<unsigned>(poplar::UNSIGNED_INT, {}, result.numElements(), "JDL_countConst");
+    poplar::ComputeSet setupCS = graph.addComputeSet("JDL_setupCS"); 
+    poplar::ComputeSet exchangeCS = graph.addComputeSet("JDL_exchangeCS");
 
     // -- First setup the single receiver tile -- //
 
-    VertexRef setupVtx = graph.addVertex(setupCS, "JDLSetupRecv", {
+    poplar::VertexRef setupVtx = graph.addVertex(setupCS, "JDLSetupRecv", {
       {"planBuf", planBuf[numActiveTiles - 1]},
       {"count", countConst}
     });
-    VertexRef exchangeVtx = graph.addVertex(exchangeCS, "JDLRecv", {
+    poplar::VertexRef exchangeVtx = graph.addVertex(exchangeCS, "JDLRecv", {
       {"planBuf", planBuf[numActiveTiles - 1]},
       {"nonexecutableDummy", dummy[numActiveTiles - 1]},
       {"tileSelector", tileSelector},
@@ -120,7 +119,7 @@ namespace JDL {
       }
       if (dataMapping[tile].size() == 0) {
         // Inactive tiles  must signal non-participation
-        VertexRef vtx = graph.addVertex(exchangeCS, "JDLNonParticipationVtx");
+        poplar::VertexRef vtx = graph.addVertex(exchangeCS, "JDLNonParticipationVtx");
         graph.setTileMapping(vtx, tile);
         continue;
       }
@@ -145,11 +144,11 @@ namespace JDL {
     }
 
     // -- Make the output programs -- //
-    program::Execute setupProgram(setupCS);
-    program::Sequence exchangeProgram({
-      program::Sync(SyncType::INTERNAL), // Hack to make poplar sync analysis work, costs time
-      program::Execute(exchangeCS),
-      program::Sync(SyncType::INTERNAL),
+    poplar::program::Execute setupProgram(setupCS);
+    poplar::program::Sequence exchangeProgram({
+      poplar::program::Sync(poplar::SyncType::INTERNAL), // Hack to make poplar sync analysis work, costs time
+      poplar::program::Execute(exchangeCS),
+      poplar::program::Sync(poplar::SyncType::INTERNAL),
     });
 
     return {setupProgram, exchangeProgram};
