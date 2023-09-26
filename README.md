@@ -2,11 +2,11 @@
 
 # JIT Dynamic Lookup (JDL)
 
-Given a 1D tensor called `data` that lives striped over many tiles on a single IPU, and an index `i` that is computed at runtime and lives on some other tile `T` on the same IPU, it is generally hard to have tile `T` access `data[i: i + N]` (for fixed `N`) because this could require dynamically exchanging data from a source tile only known at run time, and IPU exchange programs are compiled Ahead-Of-Time.
+Given a 1D tensor called `data` that lives striped over many tiles on a single Graphcore IPU, and an index `i` that is computed at runtime and lives on some other tile `T` on the same IPU, it is generally hard to have tile `T` access `data[i: i + N]` (for fixed `N`) because this could require dynamically exchanging data from a source tile only known at run time, and IPU exchange programs are compiled Ahead-Of-Time.
 
 This prototype op makes Just-In-Time modifications to an Ahead-Of-Time compiled exchange program to allow this style of dynamic lookup with minimal overheads (subject to several caveats).
 
-### Building and Running (SDK 3.2, Ubuntu 20.04, Python 3.8)
+### Building and Running (Poplar SDK 3.2, Ubuntu 20.04, Python 3.8, Colossus Mk2 IPU (incl. Bow))
 
 ```bash
 # Activate the Poplar SDK, then build the example
@@ -47,7 +47,7 @@ Then the API call looks like this:
 JDL::Programs jdlPrograms = JDL::createPrograms(graph, data, tileSelector, elementSelector, result);
 ```
 
-This builds you two `poplar::Program`s. At the start of your IPU program, execute `progs.setup` once. Later, execute `progs.exchange` as many times as you want, which will populate `result` by fetching data from `data` based on the current values stored in `tileSelector` and `elementSelector`.
+This builds you two `poplar::Program`s. At the start of your IPU program, execute `jdlPrograms.setup` once. Later, execute `jdlPrograms.exchange` as many times as you want, which will populate `result` by fetching data from `data` based on the current values stored in `tileSelector` and `elementSelector`.
 
 ```c++
 program::Sequence mainProgram({
@@ -69,9 +69,9 @@ The op always fetches `result.size()` elements.
 
 ### Caveats
  - This op only supports a single IPU.
- - This prototype doesn't support the receiving tile also being a sending tile. (i.e., the `result` tensor cannot live on a tile that also contains some of `data` tensor). This functionality would be easy to add if required, but it wasn't required for my use case.
+ - This prototype doesn't support the receiving tile also being a sending tile. (i.e., the `result` tensor cannot live on a tile that also contains some of `data` tensor). This functionality would be easy to add if required, but it wasn't required for my use case. Please raise an issue if you require it.
  - Fetching slices that straddle multiple tiles is not currently supported. Invalid indices (outside the array or straddling a tile boundary) will silently return garbage data.
- - The op is split into two programs, an expensive (~1500 cycles) planning program that only needs to be performed once during initialisations, and a cheap (~300 + `lookupSize` cycles) execution program that can be executed every time the lookup must be performed. The planning does *not* need redoing when the lookup index changes.
+ - The op is split into two programs, an expensive (~1500 cycles) planning program that only needs to be performed once during initialisations, and a cheap (~300 + `lookupSize` cycles) execution program that can be executed any time a dynamic lookup must be performed. If you want to use the op on several sets of tensors (or the same set of tensors with different `lookupSize`s) then make separate calls to the API and built separate setup and exchange programs.
  - To profile the example application, first disable printing of the tensors by commenting out `#define DOPRINT 1` in `example.cpp`
 
 
